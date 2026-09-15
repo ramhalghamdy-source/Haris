@@ -1,172 +1,89 @@
 # HARIS — AI Electrical Panel Monitoring Prototype
 
-**HARIS (حارس)** is a working prototype for monitoring four virtual electrical branches using live simulated sensor readings and branch-specific **Isolation Forest** anomaly-detection models.
+**HARIS (حارس)** is an AI-enabled electrical panel monitoring prototype for four virtual electrical branches. It streams simulated voltage, current, and temperature readings, detects anomalous behavior, classifies each branch as **Normal / Warning / Danger**, and provides an interactive fault diagnosis with a probable cause and suggested action.
 
-The dashboard streams voltage, current, and temperature readings, classifies the branch state as **Normal / Warning / Danger**, and provides an interactive fault diagnosis with a probable cause and suggested action.
+## Live Demo
 
-> Prototype status: simulated sensor data + trained ML models. It is designed as a demonstrable MVP, not as a production electrical-safety system.
+**GitHub Pages:** https://ramhalghamdy-source.github.io/Haris/
 
-## Features
+The public demo runs entirely in the browser — **no Render server and no Python backend are required for the hosted site**. The browser generates virtual sensor readings, trains four lightweight Isolation Forest models, runs anomaly scoring, and updates the dashboard live.
 
-- Four monitored branches:
-  - HVAC & Cooling
-  - Lab Measurement Equipment
-  - Lighting
-  - General Sockets & Computers
-- Live virtual sensor stream for voltage, current, and temperature
-- One Isolation Forest model per branch
-- Normal / Warning / Danger status
-- Interactive fault diagnosis
+> Prototype status: simulated sensor data + ML anomaly detection. This is a demonstrable MVP, not a production electrical-safety system.
+
+## Monitored Branches
+
+- HVAC & Cooling
+- Lab Measurement Equipment
+- Lighting
+- General Sockets & Computers
+
+## Live Demo Features
+
+- Live virtual voltage, current, and temperature readings
+- One client-side Isolation Forest per electrical branch
+- Normal / Warning / Danger states
+- Live anomaly scores and trend charts
+- Interactive diagnosis panel
 - Probable cause + suggested action
-- Live anomaly-score mini charts
-- Detailed live trend view for the selected branch
 - Visual alert banner
 - Fault/event history
-- Demo fault injection for:
-  - Overload
-  - Voltage drop
-  - Voltage spike
-  - Unexpected overheating
-- Reset-to-normal demo control
-- Local FastAPI backend + browser dashboard
+- Demo fault injection for overload, voltage drop, voltage spike, and overheating
+- Reset-to-normal control
 
-## Architecture
+## GitHub Pages Architecture
 
 ```text
-Virtual Sensors
-      ↓
-Python simulation engine
-      ↓
-Isolation Forest × 4
-      ↓
+Browser Virtual Sensors
+        ↓
+Isolation Forest × 4 (JavaScript)
+        ↓
 Anomaly score + status
-      ↓
+        ↓
 Fault diagnosis logic
-      ↓
-FastAPI API
-      ↓
-HARIS dashboard
+        ↓
+HARIS live dashboard
 ```
 
-## Repository Structure
+The site files are in `docs/` and are deployed automatically by `.github/workflows/pages.yml` whenever the GitHub Pages files change.
+
+## Python Reference Implementation
+
+The repository also keeps the original Python/FastAPI implementation and the scikit-learn models used during prototype development:
 
 ```text
-HARIS/
-├── app.py                 # FastAPI application + live simulation state
-├── haris_core.py          # Branch configuration and diagnosis logic
-├── train_models.py        # Rebuilds the Isolation Forest models
-├── run_haris.py           # Local launcher
-├── smoke_test.py          # Basic functional test
-├── requirements.txt
-├── start_haris.bat        # Windows launcher
-├── start_haris.sh         # macOS/Linux launcher
-├── setup_windows.bat
-├── setup_mac_linux.sh
-├── static/
-│   └── index.html         # Dashboard UI
-├── models/
-│   ├── *_isolation_forest.joblib
-│   ├── *_baseline.json
-│   ├── demo_fault_profiles.json
-│   └── metrics.json
-├── data/
-├── README_AR.md
-└── OFFLINE_DEMO_CHECKLIST.txt
+app.py
+haris_core.py
+train_models.py
+models/
+static/
 ```
 
-## Quick Start — Windows
+This version can still be run locally for model development, testing, and comparison with the browser demo.
 
-### 1. Clone the repository
-
-```bash
-git clone <YOUR_REPOSITORY_URL>
-cd HARIS
-```
-
-Or download the repository as a ZIP from GitHub and extract it.
-
-### 2. Install requirements
-
-Double-click:
-
-```text
-setup_windows.bat
-```
-
-Or run manually:
+### Local Python setup
 
 ```bash
 python -m pip install -r requirements.txt
+python run_haris.py
 ```
 
-### 3. Start HARIS
-
-Double-click:
-
-```text
-start_haris.bat
-```
-
-The dashboard should open automatically. If it does not, open:
+Then open:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-## macOS / Linux
-
-```bash
-chmod +x setup_mac_linux.sh start_haris.sh
-./setup_mac_linux.sh
-./start_haris.sh
-```
-
-Then open `http://127.0.0.1:8000`.
-
-## Rebuild the ML Models
-
-The pre-trained model files are included in `models/` so the demo can run immediately.
-
-To regenerate them:
-
-```bash
-python train_models.py
-```
-
-The project intentionally pins `scikit-learn==1.8.0` because the included `.joblib` model files were serialized with that version.
-
-## Demo Flow
-
-1. Start HARIS and confirm the reading counter increases.
-2. Select any branch to inspect its live trends.
-3. Trigger one of the demo faults.
-4. Watch the sensor values move away from baseline.
-5. Observe the model change the branch from Normal to Warning/Danger.
-6. Open the diagnosis panel to see the detected fault type, probable cause, and suggested action.
-7. Review the event log.
-8. Press **Reset to normal** to clear the demo scenario.
-
-## API Endpoints
-
-- `GET /api/health` — server health
-- `GET /api/state` — latest state for all four branches
-- `GET /api/history/{branch}` — recent readings for one branch
-- `GET /api/events` — recent fault events
-- `GET /api/validation-metrics` — stored model metrics
-- `POST /api/demo/{fault_type}` — run a predefined demo fault
-- `POST /api/inject/{branch}/{fault_type}` — inject a selected fault
-- `POST /api/reset` — reset the live demo
-
 ## Important Notes
 
-- The current data source is **simulated**, not a physical electrical sensor.
-- Isolation Forest performs anomaly detection; the human-readable fault type is inferred from the dominant deviation after an anomaly is detected.
-- The safety recommendations shown in the prototype are for demonstration and should not replace inspection by a qualified electrical professional.
-- GitHub can host the **source repository**, but this Python/FastAPI project cannot run directly on GitHub Pages. A hosted public version would need a Python-capable deployment service.
+- The current data source is simulated, not a physical electrical sensor.
+- The public GitHub Pages demo uses a browser-side Isolation Forest implementation trained on generated normal operating data.
+- The original Python/scikit-learn implementation remains in the repository as the model-development reference.
+- Human-readable fault diagnosis is inferred from the dominant sensor deviation after an anomaly is detected.
+- Safety recommendations shown in the prototype are for demonstration and should not replace inspection by a qualified electrical professional.
 
 ## Arabic Documentation
 
-See [README_AR.md](README_AR.md) for the Arabic quick-start and demo instructions.
+See `README_AR.md` for Arabic project notes and local setup instructions.
 
 ---
 
