@@ -1,0 +1,15 @@
+HARIS — OFFLINE JUDGING CHECKLIST
+
+[ ] setup_windows.bat was completed successfully before Judging Day
+[ ] start_haris.bat opens the local server
+[ ] http://127.0.0.1:8000 loads with Wi-Fi OFF
+[ ] Reading number (#) keeps increasing
+[ ] All 4 branch cards update live
+[ ] Live trend graph moves
+[ ] Overload demo produces warning/danger
+[ ] Visual alert banner appears
+[ ] Diagnosis shows fault + likely cause + suggested action
+[ ] Fault event appears in the event log
+[ ] Reset returns the demo to a clean normal state
+[ ] Laptop charger is available
+[ ] Browser tab is already open before pitching

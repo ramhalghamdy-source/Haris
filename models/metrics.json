@@ -1,0 +1,50 @@
+{
+  "note_ar": "المقاييس تخص بيانات محاكاة وليست تحققًا ميدانيًا من حساسات كهربائية حقيقية.",
+  "overall": {
+    "overall_accuracy": 0.9975570436507937,
+    "anomaly_recall": 0.9088016967126193,
+    "anomaly_precision": 0.8853305785123967,
+    "diagnosis_accuracy_detected": 0.9159859976662778,
+    "total_rows": 80640,
+    "real_anomaly_points": 943,
+    "detected_real_anomaly_points": 857
+  },
+  "branches": [
+    {
+      "branch": "hvac",
+      "overall_accuracy": 0.9977678571428571,
+      "anomaly_recall": 0.9121338912133892,
+      "anomaly_precision": 0.9008264462809917,
+      "diagnosis_accuracy_detected": 1.0,
+      "real_anomaly_points": 239,
+      "detected_real_anomaly_points": 218
+    },
+    {
+      "branch": "lab_equipment",
+      "overall_accuracy": 0.9968253968253968,
+      "anomaly_recall": 0.8272058823529411,
+      "anomaly_precision": 0.9297520661157025,
+      "diagnosis_accuracy_detected": 0.9777777777777777,
+      "real_anomaly_points": 272,
+      "detected_real_anomaly_points": 225
+    },
+    {
+      "branch": "lighting",
+      "overall_accuracy": 0.9977678571428571,
+      "anomaly_recall": 0.9457013574660633,
+      "anomaly_precision": 0.8636363636363636,
+      "diagnosis_accuracy_detected": 0.9856459330143541,
+      "real_anomaly_points": 221,
+      "detected_real_anomaly_points": 209
+    },
+    {
+      "branch": "sockets",
+      "overall_accuracy": 0.9978670634920634,
+      "anomaly_recall": 0.9715639810426541,
+      "anomaly_precision": 0.8471074380165289,
+      "diagnosis_accuracy_detected": 0.6878048780487804,
+      "real_anomaly_points": 211,
+      "detected_real_anomaly_points": 205
+    }
+  ]
+}
