@@ -1,5 +1,6 @@
 // HARIS browser-native persistent audio alert system.
-// Uses Web Audio API so GitHub Pages needs no external audio file or server.
+// The alarm is driven from the rendered dashboard state so it keeps ringing
+// as long as ANY branch is in WARNING or DANGER.
 (() => {
   let audioCtx = null;
   let masterGain = null;
@@ -7,7 +8,7 @@
   let enabled = true;
   let armed = false;
   let activeSeverity = 'normal';
-  let lastRingAt = 0;
+  let nextRingAt = 0;
   const activeOscillators = new Set();
 
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -28,8 +29,7 @@
         enabled = !enabled;
         if (enabled) {
           armAudio();
-          lastRingAt = 0;
-          persistentAlarmLoop();
+          nextRingAt = 0;
         } else {
           stopActiveTones();
         }
@@ -48,10 +48,10 @@
       chip.textContent = '🔇 الصوت مكتوم';
       chip.style.opacity = '.65';
     } else if (activeSeverity === 'danger') {
-      chip.textContent = '🔔 إنذار نشط · خطر';
+      chip.textContent = '🔔 إنذار مستمر · خطر';
       chip.style.opacity = '1';
     } else if (activeSeverity === 'warning') {
-      chip.textContent = '🔔 إنذار نشط · تحذير';
+      chip.textContent = '🔔 إنذار مستمر · تحذير';
       chip.style.opacity = '1';
     } else if (!armed) {
       chip.textContent = '🔔 جرس التنبيه · جاهز';
@@ -64,11 +64,9 @@
 
   function setupAudioChain() {
     if (!audioCtx || masterGain) return;
-
     masterGain = audioCtx.createGain();
     compressor = audioCtx.createDynamicsCompressor();
 
-    // Noticeable alarm level while keeping peaks comfortable.
     masterGain.gain.value = 0.92;
     compressor.threshold.value = -14;
     compressor.knee.value = 20;
@@ -85,9 +83,7 @@
     try {
       if (!audioCtx) audioCtx = new AudioContextClass();
       setupAudioChain();
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume().catch(() => {});
-      }
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
       armed = true;
       updateIndicator();
     } catch (_) {
@@ -112,8 +108,6 @@
     osc.type = type;
     osc.frequency.setValueAtTime(frequency, start);
     osc.detune.setValueAtTime(detune, start);
-
-    // Fast strike + smooth decay gives a bell-like alarm instead of a harsh beep.
     gain.gain.setValueAtTime(0.0001, start);
     gain.gain.exponentialRampToValueAtTime(volume, start + 0.012);
     gain.gain.exponentialRampToValueAtTime(Math.max(volume * 0.34, 0.001), start + 0.10);
@@ -136,7 +130,6 @@
   function playWarningAlert() {
     armAudio();
     if (!audioCtx || audioCtx.state !== 'running') return;
-    // Two calm bell strikes. Repeated every few seconds while WARNING remains active.
     bellStrike(720, 0.00, 0.88, 0.68);
     bellStrike(840, 0.48, 0.82, 0.64);
   }
@@ -144,54 +137,50 @@
   function playDangerAlert() {
     armAudio();
     if (!audioCtx || audioCtx.state !== 'running') return;
-    // Three clearer alarm-bell strikes. Repeated while DANGER remains active.
     bellStrike(760, 0.00, 1.00, 0.78);
     bellStrike(760, 0.48, 1.00, 0.78);
     bellStrike(940, 0.96, 1.08, 0.88);
   }
 
-  function currentSeverity() {
-    try {
-      if (typeof latest === 'undefined' || !latest || typeof latest !== 'object') return 'normal';
-      const readings = Object.values(latest);
-      if (readings.some((r) => r && r.status === 'danger')) return 'danger';
-      if (readings.some((r) => r && r.status === 'warning')) return 'warning';
-      return 'normal';
-    } catch (_) {
-      return 'normal';
-    }
+  // Read the actual visible card state. This avoids relying on variables from app.js
+  // and makes the alarm independent and reliable on GitHub Pages.
+  function currentSeverityFromDashboard() {
+    if (document.querySelector('.card[data-status="danger"]')) return 'danger';
+    if (document.querySelector('.card[data-status="warning"]')) return 'warning';
+    return 'normal';
   }
 
   function persistentAlarmLoop() {
-    const severity = currentSeverity();
+    const severity = currentSeverityFromDashboard();
 
     if (severity !== activeSeverity) {
       activeSeverity = severity;
-      lastRingAt = 0; // ring immediately on a new severity or escalation.
+      nextRingAt = 0; // ring immediately when a fault appears or escalates
       if (severity === 'normal') stopActiveTones();
       updateIndicator();
     }
 
-    // The alarm stops only when every monitored line returns to NORMAL or sound is muted.
     if (!enabled || !armed || severity === 'normal') return;
 
-    const now = performance.now();
-    // Warning stays noticeable but calm; danger repeats more urgently.
-    const repeatMs = severity === 'danger' ? 2400 : 3600;
-    if (now - lastRingAt >= repeatMs || lastRingAt === 0) {
-      lastRingAt = now;
-      if (severity === 'danger') playDangerAlert();
-      else playWarningAlert();
+    const now = Date.now();
+    if (nextRingAt === 0 || now >= nextRingAt) {
+      if (severity === 'danger') {
+        playDangerAlert();
+        nextRingAt = now + 2600;
+      } else {
+        playWarningAlert();
+        nextRingAt = now + 3600;
+      }
     }
   }
 
-  // Browsers require a user gesture before sound can play. Clicking a demo fault button
-  // arms the AudioContext, after which the bell continues until the fault is resolved.
+  // Browsers require a user gesture before sound can play. The first click/tap/key press
+  // arms the audio engine. Clicking a demo-fault button therefore enables the alarm.
   document.addEventListener('pointerdown', armAudio, { passive: true });
   document.addEventListener('keydown', armAudio, { passive: true });
 
   window.addEventListener('DOMContentLoaded', () => {
     updateIndicator();
-    setInterval(persistentAlarmLoop, 180);
+    setInterval(persistentAlarmLoop, 150);
   });
 })();
