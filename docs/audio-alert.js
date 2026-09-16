@@ -1,4 +1,4 @@
-// HARIS browser-native audio alert system.
+// HARIS browser-native persistent audio alert system.
 // Uses Web Audio API so GitHub Pages needs no external audio file or server.
 (() => {
   let audioCtx = null;
@@ -6,7 +6,9 @@
   let compressor = null;
   let enabled = true;
   let armed = false;
-  let lastEventKey = '';
+  let activeSeverity = 'normal';
+  let lastRingAt = 0;
+  const activeOscillators = new Set();
 
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 
@@ -26,7 +28,10 @@
         enabled = !enabled;
         if (enabled) {
           armAudio();
-          playTestTone();
+          lastRingAt = 0;
+          persistentAlarmLoop();
+        } else {
+          stopActiveTones();
         }
         updateIndicator();
       });
@@ -42,6 +47,12 @@
     if (!enabled) {
       chip.textContent = '🔇 الصوت مكتوم';
       chip.style.opacity = '.65';
+    } else if (activeSeverity === 'danger') {
+      chip.textContent = '🔔 إنذار نشط · خطر';
+      chip.style.opacity = '1';
+    } else if (activeSeverity === 'warning') {
+      chip.textContent = '🔔 إنذار نشط · تحذير';
+      chip.style.opacity = '1';
     } else if (!armed) {
       chip.textContent = '🔔 جرس التنبيه · جاهز';
       chip.style.opacity = '1';
@@ -57,7 +68,7 @@
     masterGain = audioCtx.createGain();
     compressor = audioCtx.createDynamicsCompressor();
 
-    // Slightly stronger overall output while keeping peaks soft and comfortable.
+    // Noticeable alarm level while keeping peaks comfortable.
     masterGain.gain.value = 0.92;
     compressor.threshold.value = -14;
     compressor.knee.value = 20;
@@ -84,6 +95,13 @@
     }
   }
 
+  function stopActiveTones() {
+    for (const osc of activeOscillators) {
+      try { osc.stop(); } catch (_) {}
+    }
+    activeOscillators.clear();
+  }
+
   function bellPartial(frequency, delay, duration, volume, type = 'sine', detune = 0) {
     if (!enabled || !audioCtx || audioCtx.state !== 'running' || !masterGain) return;
 
@@ -95,7 +113,7 @@
     osc.frequency.setValueAtTime(frequency, start);
     osc.detune.setValueAtTime(detune, start);
 
-    // Fast strike + smooth exponential decay gives a bell-like alarm instead of a harsh beep.
+    // Fast strike + smooth decay gives a bell-like alarm instead of a harsh beep.
     gain.gain.setValueAtTime(0.0001, start);
     gain.gain.exponentialRampToValueAtTime(volume, start + 0.012);
     gain.gain.exponentialRampToValueAtTime(Math.max(volume * 0.34, 0.001), start + 0.10);
@@ -103,12 +121,13 @@
 
     osc.connect(gain);
     gain.connect(masterGain);
+    activeOscillators.add(osc);
+    osc.onended = () => activeOscillators.delete(osc);
     osc.start(start);
     osc.stop(start + duration + 0.04);
   }
 
   function bellStrike(frequency, delay = 0, strength = 1, duration = 0.75) {
-    // Fundamental plus gentle metallic overtones. Strong enough to notice, not siren-like.
     bellPartial(frequency, delay, duration, 0.082 * strength, 'sine');
     bellPartial(frequency * 2.01, delay + 0.004, duration * 0.72, 0.030 * strength, 'sine', 3);
     bellPartial(frequency * 3.92, delay + 0.007, duration * 0.48, 0.013 * strength, 'triangle', -4);
@@ -117,7 +136,7 @@
   function playWarningAlert() {
     armAudio();
     if (!audioCtx || audioCtx.state !== 'running') return;
-    // Two calm bell strikes for WARNING.
+    // Two calm bell strikes. Repeated every few seconds while WARNING remains active.
     bellStrike(720, 0.00, 0.88, 0.68);
     bellStrike(840, 0.48, 0.82, 0.64);
   }
@@ -125,50 +144,54 @@
   function playDangerAlert() {
     armAudio();
     if (!audioCtx || audioCtx.state !== 'running') return;
-    // Three clearer alarm-bell strikes for DANGER, without a piercing siren tone.
+    // Three clearer alarm-bell strikes. Repeated while DANGER remains active.
     bellStrike(760, 0.00, 1.00, 0.78);
     bellStrike(760, 0.48, 1.00, 0.78);
     bellStrike(940, 0.96, 1.08, 0.88);
   }
 
-  function playTestTone() {
-    if (!audioCtx || audioCtx.state !== 'running') return;
-    bellStrike(820, 0, 0.62, 0.42);
-  }
-
-  function eventKey(event) {
-    if (!event) return '';
-    return [event.timestamp, event.branch, event.kind, event.status, event.fault_type].join('|');
-  }
-
-  function watchEvents() {
+  function currentSeverity() {
     try {
-      if (typeof events === 'undefined' || !Array.isArray(events) || !events.length) return;
-      const event = events[0];
-      const key = eventKey(event);
-      if (!key || key === lastEventKey) return;
-
-      // Mark first so an old event never plays later just because audio became available.
-      lastEventKey = key;
-
-      if (event.kind === 'اكتشاف') {
-        if (event.status === 'danger') playDangerAlert();
-        else playWarningAlert();
-      } else if (event.kind === 'تصاعد') {
-        playDangerAlert();
-      }
+      if (typeof latest === 'undefined' || !latest || typeof latest !== 'object') return 'normal';
+      const readings = Object.values(latest);
+      if (readings.some((r) => r && r.status === 'danger')) return 'danger';
+      if (readings.some((r) => r && r.status === 'warning')) return 'warning';
+      return 'normal';
     } catch (_) {
-      // Audio is non-critical; monitoring must continue even if a browser blocks sound.
+      return 'normal';
     }
   }
 
-  // Browsers require a user gesture before sound can play. The first click/tap/key press
-  // arms the AudioContext. In the demo, clicking any fault button is enough.
+  function persistentAlarmLoop() {
+    const severity = currentSeverity();
+
+    if (severity !== activeSeverity) {
+      activeSeverity = severity;
+      lastRingAt = 0; // ring immediately on a new severity or escalation.
+      if (severity === 'normal') stopActiveTones();
+      updateIndicator();
+    }
+
+    // The alarm stops only when every monitored line returns to NORMAL or sound is muted.
+    if (!enabled || !armed || severity === 'normal') return;
+
+    const now = performance.now();
+    // Warning stays noticeable but calm; danger repeats more urgently.
+    const repeatMs = severity === 'danger' ? 2400 : 3600;
+    if (now - lastRingAt >= repeatMs || lastRingAt === 0) {
+      lastRingAt = now;
+      if (severity === 'danger') playDangerAlert();
+      else playWarningAlert();
+    }
+  }
+
+  // Browsers require a user gesture before sound can play. Clicking a demo fault button
+  // arms the AudioContext, after which the bell continues until the fault is resolved.
   document.addEventListener('pointerdown', armAudio, { passive: true });
   document.addEventListener('keydown', armAudio, { passive: true });
 
   window.addEventListener('DOMContentLoaded', () => {
     updateIndicator();
-    setInterval(watchEvents, 180);
+    setInterval(persistentAlarmLoop, 180);
   });
 })();
