@@ -2,6 +2,8 @@
 // Uses Web Audio API so GitHub Pages needs no external audio file or server.
 (() => {
   let audioCtx = null;
+  let masterGain = null;
+  let compressor = null;
   let enabled = true;
   let armed = false;
   let lastEventKey = '';
@@ -41,18 +43,37 @@
       chip.textContent = '🔇 الصوت مكتوم';
       chip.style.opacity = '.65';
     } else if (!armed) {
-      chip.textContent = '🔊 صوت التنبيه · جاهز';
+      chip.textContent = '🔔 جرس التنبيه · جاهز';
       chip.style.opacity = '1';
     } else {
-      chip.textContent = '🔊 صوت التنبيه · مفعّل';
+      chip.textContent = '🔔 جرس التنبيه · مفعّل';
       chip.style.opacity = '1';
     }
+  }
+
+  function setupAudioChain() {
+    if (!audioCtx || masterGain) return;
+
+    masterGain = audioCtx.createGain();
+    compressor = audioCtx.createDynamicsCompressor();
+
+    // Slightly stronger overall output while keeping peaks soft and comfortable.
+    masterGain.gain.value = 0.92;
+    compressor.threshold.value = -14;
+    compressor.knee.value = 20;
+    compressor.ratio.value = 5;
+    compressor.attack.value = 0.004;
+    compressor.release.value = 0.20;
+
+    masterGain.connect(compressor);
+    compressor.connect(audioCtx.destination);
   }
 
   function armAudio() {
     if (!enabled || !AudioContextClass) return;
     try {
       if (!audioCtx) audioCtx = new AudioContextClass();
+      setupAudioChain();
       if (audioCtx.state === 'suspended') {
         audioCtx.resume().catch(() => {});
       }
@@ -63,8 +84,8 @@
     }
   }
 
-  function tone(frequency, delay, duration, volume = 0.055, type = 'sine') {
-    if (!enabled || !audioCtx || audioCtx.state !== 'running') return;
+  function bellPartial(frequency, delay, duration, volume, type = 'sine', detune = 0) {
+    if (!enabled || !audioCtx || audioCtx.state !== 'running' || !masterGain) return;
 
     const start = audioCtx.currentTime + delay;
     const osc = audioCtx.createOscillator();
@@ -72,34 +93,47 @@
 
     osc.type = type;
     osc.frequency.setValueAtTime(frequency, start);
+    osc.detune.setValueAtTime(detune, start);
+
+    // Fast strike + smooth exponential decay gives a bell-like alarm instead of a harsh beep.
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(volume, start + 0.018);
+    gain.gain.exponentialRampToValueAtTime(volume, start + 0.012);
+    gain.gain.exponentialRampToValueAtTime(Math.max(volume * 0.34, 0.001), start + 0.10);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
 
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(masterGain);
     osc.start(start);
-    osc.stop(start + duration + 0.03);
+    osc.stop(start + duration + 0.04);
+  }
+
+  function bellStrike(frequency, delay = 0, strength = 1, duration = 0.75) {
+    // Fundamental plus gentle metallic overtones. Strong enough to notice, not siren-like.
+    bellPartial(frequency, delay, duration, 0.082 * strength, 'sine');
+    bellPartial(frequency * 2.01, delay + 0.004, duration * 0.72, 0.030 * strength, 'sine', 3);
+    bellPartial(frequency * 3.92, delay + 0.007, duration * 0.48, 0.013 * strength, 'triangle', -4);
   }
 
   function playWarningAlert() {
     armAudio();
     if (!audioCtx || audioCtx.state !== 'running') return;
-    tone(880, 0.00, 0.18, 0.05, 'sine');
-    tone(660, 0.23, 0.22, 0.055, 'sine');
+    // Two calm bell strikes for WARNING.
+    bellStrike(720, 0.00, 0.88, 0.68);
+    bellStrike(840, 0.48, 0.82, 0.64);
   }
 
   function playDangerAlert() {
     armAudio();
     if (!audioCtx || audioCtx.state !== 'running') return;
-    tone(740, 0.00, 0.18, 0.065, 'square');
-    tone(740, 0.25, 0.18, 0.065, 'square');
-    tone(980, 0.50, 0.34, 0.075, 'square');
+    // Three clearer alarm-bell strikes for DANGER, without a piercing siren tone.
+    bellStrike(760, 0.00, 1.00, 0.78);
+    bellStrike(760, 0.48, 1.00, 0.78);
+    bellStrike(940, 0.96, 1.08, 0.88);
   }
 
   function playTestTone() {
     if (!audioCtx || audioCtx.state !== 'running') return;
-    tone(720, 0, 0.12, 0.03, 'sine');
+    bellStrike(820, 0, 0.62, 0.42);
   }
 
   function eventKey(event) {
